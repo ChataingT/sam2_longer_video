@@ -8,12 +8,12 @@ import os
 from setuptools import find_packages, setup
 
 # Package metadata
-NAME = "SAM-2"
+NAME = "SAM-2-LV"
 VERSION = "1.0"
-DESCRIPTION = "SAM 2: Segment Anything in Images and Videos"
-URL = "https://github.com/facebookresearch/sam2"
-AUTHOR = "Meta AI"
-AUTHOR_EMAIL = "segment-anything@meta.com"
+DESCRIPTION = "SAM 2 Longue Video: Segment Anything for longue Videos"
+URL = "https://github.com/ChataingT/sam2_longer_video"
+AUTHOR = "Mirko, Nicolò, Thibaut"
+AUTHOR_EMAIL = "thibaut.chataing@unige.ch"
 LICENSE = "Apache 2.0"
 
 # Read the contents of README file
@@ -38,17 +38,6 @@ EXTRA_PACKAGES = {
         "opencv-python>=4.7.0",
         "eva-decord>=0.6.1",
     ],
-    "interactive-demo": [
-        "Flask>=3.0.3",
-        "Flask-Cors>=5.0.0",
-        "av>=13.0.0",
-        "dataclasses-json>=0.6.7",
-        "eva-decord>=0.6.1",
-        "gunicorn>=23.0.0",
-        "imagesize>=1.4.1",
-        "pycocotools>=2.0.8",
-        "strawberry-graphql>=0.243.0",
-    ],
     "dev": [
         "black==24.2.0",
         "usort==1.0.2",
@@ -61,6 +50,10 @@ EXTRA_PACKAGES = {
         "tensordict>=0.5.0",
         "opencv-python>=4.7.0",
         "submitit>=1.5.1",
+        "jupyter>=1.0.0",
+        "jupyterlab>=4.2.0",
+        "matplotlib>=3.9.1",
+        "eva-decord>=0.6.1",
     ],
 }
 
