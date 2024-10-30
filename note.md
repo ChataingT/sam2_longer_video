@@ -13,3 +13,5 @@ Run
 ´´´docker run --rm -it --gpus all -p 8888:8888 tchataing/sam_lv:test bash´´´
 Run jupyterlab
 ´´´jupyter-lab --no-browser --ip 0.0.0.0 --allow-root´´´
+Run test
+´´´python test/test.py´´´
