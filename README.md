@@ -20,7 +20,7 @@ with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
     frame_idx, object_ids, masks = predictor.add_new_points_or_box(state, <your_prompts>):
 
     # propagate the prompts to get masklets throughout the video
-    for frame_idx, object_ids, masks in predictor.propagate_in_video(state, nbr_frame_to_keep_in_memory):
+    for frame_idx, object_ids, masks in predictor.propagate_in_video(state, nbr_frame_to_keep_in_memory=42):
         ...
 ```
 ## Sources :
