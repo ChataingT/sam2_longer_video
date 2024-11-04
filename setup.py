@@ -157,7 +157,7 @@ setup(
     author=AUTHOR,
     author_email=AUTHOR_EMAIL,
     license=LICENSE,
-    packages=find_packages(exclude="notebooks"),
+    packages=find_packages(exclude=["notebooks", "test"]),
     include_package_data=True,
     install_requires=REQUIRED_PACKAGES,
     extras_require=EXTRA_PACKAGES,
