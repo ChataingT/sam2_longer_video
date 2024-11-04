@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+ARG BASE_IMAGE=pytorch/pytorch:2.3.1-cuda12.1-cudnn8-devel
 ARG MODEL_SIZE=tiny
 
 FROM ${BASE_IMAGE}
@@ -8,12 +8,15 @@ FROM ${BASE_IMAGE}
 # ENV GUNICORN_THREADS=2
 # ENV GUNICORN_PORT=5000
 
+ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+ENV CUDA_HOME="/usr/local/cuda"
+
 # SAM 2 environment variables
 ENV APP_ROOT=/opt/sam2_lv
 ENV PYTHONPATH=":${APP_ROOT}"
 
 ENV PYTHONUNBUFFERED=1
-ENV SAM2_BUILD_CUDA=0
+ENV SAM2_BUILD_CUDA=1
 # ENV MODEL_SIZE=${MODEL_SIZE}
 ENV MODEL_SIZE=tiny
 
@@ -28,6 +31,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libffi-dev
 
+
+RUN mkdir ${APP_ROOT}
+WORKDIR ${APP_ROOT}
+
+# Copy SAM 2 inference files
+COPY sam2 ./sam2
+COPY test ./test
+
+
 COPY setup.py .
 COPY README.md .
 
@@ -37,16 +49,12 @@ RUN pip install -e ".[dev]"
 # https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite/issues/69#issuecomment-1826764707
 RUN rm /opt/conda/bin/ffmpeg && ln -s /bin/ffmpeg /opt/conda/bin/ffmpeg
 
-# Make app directory. This directory will host all files required for the
-# backend and SAM 2 inference files.
-RUN mkdir ${APP_ROOT}
+
 
 # Copy backend server files
 # COPY demo/backend/server ${APP_ROOT}/server
 
-# Copy SAM 2 inference files
-COPY sam2 ${APP_ROOT}/sam2
-COPY test ${APP_ROOT}/test
+
 
 # Download SAM 2.1 checkpoints
 ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_tiny.pt
@@ -54,7 +62,7 @@ ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.
 ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_base_plus.pt
 ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_large.pt
 
-WORKDIR ${APP_ROOT}/
+
 
 # https://pythonspeed.com/articles/gunicorn-in-docker/
 # CMD gunicorn --worker-tmp-dir /dev/shm \
