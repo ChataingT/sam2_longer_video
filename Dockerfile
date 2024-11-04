@@ -1,5 +1,5 @@
-ARG BASE_IMAGE=pytorch/pytorch:2.3.1-cuda12.1-cudnn8-devel
-# ARG BASE_IMAGE=pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
+# ARG BASE_IMAGE=pytorch/pytorch:2.3.1-cuda12.1-cudnn8-devel
+ARG BASE_IMAGE=pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
 ARG MODEL_SIZE=tiny
 
 FROM ${BASE_IMAGE}
