@@ -171,6 +171,78 @@ class AsyncVideoFrameLoader:
         return len(self.images)
 
 
+class AsyncVideoLoader:
+    """
+    A list of video frames to be load asynchronously without blocking session start.
+    """
+
+    def __init__(
+        self,
+        video_generator,
+        image_size,
+        offload_video_to_cpu,
+        img_mean,
+        img_std,
+        compute_device,
+        video_height,
+        video_width,
+        nbr_frame_to_keep_in_memory=-1,
+
+    ):
+        self.video_generator = video_generator
+        self.image_size = image_size
+        self.offload_video_to_cpu = offload_video_to_cpu
+        self.img_mean = img_mean
+        self.img_std = img_std
+        # items in `self.images` will be loaded asynchronously
+        self.images = [None] * len(video_generator)
+        # catch and raise any exceptions in the async loading thread
+        self.exception = None
+        # video_height and video_width be filled when loading the first image
+        self.video_height = video_height
+        self.video_width = video_width
+        self.compute_device = compute_device
+
+        # load the first frame to fill video_height and video_width and also
+        # to cache it (since it's most likely where the user will click)
+        self.__getitem__(0)
+
+        # load the rest of frames asynchronously without blocking the session start
+        def _load_frames():
+            try:
+                for n in tqdm(range(len(self.images)), desc="frame loading (JPEG)"):
+                    self.__getitem__(n)
+            except Exception as e:
+                self.exception = e
+
+        # Undo the multithreading for loading frame from SAM2 sor it wait for the model 
+        # TODO should we allow multithreading but limit how much advance SAM2 can take over the propagate ?
+        # self.thread = Thread(target=_load_frames, daemon=True)
+        # self.thread.start()
+
+    def __getitem__(self, index):
+        if self.exception is not None:
+            raise RuntimeError("Failure in frame loading thread") from self.exception
+
+        img = self.images[index]
+        if img is not None:
+            return img
+
+
+        img = self.video_generator[index].permute(2, 0, 1)
+        img = img.float() / 255.0
+        # normalize by mean and std
+        img -= self.img_mean
+        img /= self.img_std
+        if not self.offload_video_to_cpu:
+            img = img.to(self.compute_device, non_blocking=True)
+        # self.images[index] = img
+        return img
+
+    def __len__(self):
+        return len(self.images)
+
+
 def load_video_frames(
     video_path,
     image_size,
@@ -194,6 +266,7 @@ def load_video_frames(
             offload_video_to_cpu=offload_video_to_cpu,
             img_mean=img_mean,
             img_std=img_std,
+            async_loading_frames=async_loading_frames,
             compute_device=compute_device,
         )
     elif is_str and os.path.isdir(video_path):
@@ -285,6 +358,7 @@ def load_video_frames_from_video_file(
     offload_video_to_cpu,
     img_mean=(0.485, 0.456, 0.406),
     img_std=(0.229, 0.224, 0.225),
+    async_loading_frames=False,
     compute_device=torch.device("cuda"),
 ):
     """Load the video frames from a video file."""
@@ -297,7 +371,22 @@ def load_video_frames_from_video_file(
     video_height, video_width, _ = decord.VideoReader(video_path).next().shape
     # Iterate over all frames in the video
     images = []
-    for frame in decord.VideoReader(video_path, width=image_size, height=image_size):
+
+    video_generator = decord.VideoReader(video_path, width=image_size, height=image_size)
+    if async_loading_frames:
+        lazy_images = AsyncVideoLoader(
+            video_generator,
+            image_size,
+            offload_video_to_cpu,
+            img_mean,
+            img_std,
+            compute_device,
+            video_height,
+            video_width
+        )
+        return lazy_images, lazy_images.video_height, lazy_images.video_width
+
+    for frame in video_generator:
         images.append(frame.permute(2, 0, 1))
 
     images = torch.stack(images, dim=0).float() / 255.0

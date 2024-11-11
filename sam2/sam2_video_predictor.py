@@ -673,6 +673,7 @@ class SAM2VideoPredictor(SAM2Base):
         """Propagate the input points across frames to track in the entire video."""
         self.propagate_in_video_preflight(inference_state)
 
+        print(f"Number frame to keep in memory : {nbr_frame_to_keep_in_memory}")
         output_dict = inference_state["output_dict"]
         consolidated_frame_inds = inference_state["consolidated_frame_inds"]
         obj_ids = inference_state["obj_ids"]
@@ -743,7 +744,7 @@ class SAM2VideoPredictor(SAM2Base):
                 for old_idx in old_frame_idxs:
                     output_dict[storage_key].pop(old_idx)
                     for objid in inference_state[obj_key].keys():
-                        inference_state[obj_key][objid][storage_key].pop(old_idx)    
+                        inference_state[obj_key][objid][storage_key].pop(old_idx)
             
 
             # Create slices of per-object outputs for subsequent interaction with each
