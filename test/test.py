@@ -51,7 +51,7 @@ class TestSAM2_LV(unittest.TestCase):
         # `video_dir` a directory of JPEG frames with filenames like `<frame_index>.jpg`
         video = os.path.join(this_file_path,"./assets/bedroom.mp4")
 
-        inference_state = predictor.init_state(video_path=video
+        inference_state = predictor.init_state(video_path=video,
                                                     offload_video_to_cpu=True,
                                                     offload_state_to_cpu=True,
                                                     async_loading_frames=True)
