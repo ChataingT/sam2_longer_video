@@ -8,4 +8,4 @@ from hydra import initialize_config_module
 from hydra.core.global_hydra import GlobalHydra
 
 if not GlobalHydra.instance().is_initialized():
-    initialize_config_module("sam2/configs/sam2.1", version_base="1.2")  # Modify the path to the config files folder
+    initialize_config_module("sam2/configs/sam2_1", version_base="1.2")  # Modify the path to the config files folder
