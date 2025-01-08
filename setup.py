@@ -12,7 +12,7 @@ NAME = "SAM-2-LV"
 VERSION = "1.0"
 DESCRIPTION = "SAM 2 Longue Video: Segment Anything for longue Videos"
 URL = "https://github.com/ChataingT/sam2_longer_video"
-AUTHOR = "Mirko, Nicolò, Thibaut"
+AUTHOR = "Thibaut, Nicolò"
 AUTHOR_EMAIL = "thibaut.chataing@unige.ch"
 LICENSE = "Apache 2.0"
 
