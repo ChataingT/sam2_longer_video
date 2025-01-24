@@ -13,6 +13,8 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
+import decord
+
 
 def get_sdpa_settings():
     if torch.cuda.is_available():
@@ -228,8 +230,16 @@ class AsyncVideoLoader:
         if img is not None:
             return img
 
+        img = self.video_generator[index]
+        if isinstance(img, decord.ndarray.NDArray):
+            numpy_array = img.asnumpy()
+            # Convert the NumPy array to a PyTorch tensor
+            img = torch.from_numpy(numpy_array)
+            img = img.permute(2, 0, 1)
+        else:
+            img = img.permute(2, 0, 1)
 
-        img = self.video_generator[index].permute(2, 0, 1)
+        # img = self.video_generator[index].permute(2, 0, 1)
         img = img.float() / 255.0
         # normalize by mean and std
         img -= self.img_mean
