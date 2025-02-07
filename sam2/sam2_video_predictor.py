@@ -10,10 +10,11 @@ from collections import OrderedDict
 import torch
 
 from tqdm import tqdm
-
+import logging
 from sam2.modeling.sam2_base import NO_OBJ_SCORE, SAM2Base
 from sam2.utils.misc import concat_points, fill_holes_in_mask_scores, load_video_frames
 
+logger = logging.getLogger(__name__)
 
 class SAM2VideoPredictor(SAM2Base):
     """The predictor class to handle user interactions and manage inference states."""
@@ -62,6 +63,7 @@ class SAM2VideoPredictor(SAM2Base):
         inference_state = {}
         inference_state["images"] = images
         inference_state["num_frames"] = len(images)
+        logger.info(f"Loaded {inference_state['num_frames']} frames from {video_path}")
         # whether to offload the video frames to CPU memory
         # turning on this option saves the GPU memory with only a very small overhead
         inference_state["offload_video_to_cpu"] = offload_video_to_cpu
@@ -673,7 +675,7 @@ class SAM2VideoPredictor(SAM2Base):
         """Propagate the input points across frames to track in the entire video."""
         self.propagate_in_video_preflight(inference_state)
 
-        print(f"Number frame to keep in memory : {nbr_frame_to_keep_in_memory}")
+        logger.info(f"Number frame to keep in memory : {nbr_frame_to_keep_in_memory}")
         output_dict = inference_state["output_dict"]
         consolidated_frame_inds = inference_state["consolidated_frame_inds"]
         obj_ids = inference_state["obj_ids"]
@@ -733,10 +735,11 @@ class SAM2VideoPredictor(SAM2Base):
                     reverse=reverse,
                     run_mem_encoder=True,
                 )
-            output_dict[storage_key][frame_idx] = current_out
+                output_dict[storage_key][frame_idx] = current_out
 
             # (Hacky) Delete old state data to clear space after '_run_single_frame_inference'
             if nbr_frame_to_keep_in_memory > 0:
+                # logger.info(f"Deleting old state data for frame {frame_idx}")
                 storage_key, obj_key = "non_cond_frame_outputs", "output_dict_per_obj"
                 oldest_allowed_idx = frame_idx - nbr_frame_to_keep_in_memory
                 all_frame_idxs = output_dict[storage_key].keys()
@@ -745,6 +748,7 @@ class SAM2VideoPredictor(SAM2Base):
                     output_dict[storage_key].pop(old_idx)
                     for objid in inference_state[obj_key].keys():
                         inference_state[obj_key][objid][storage_key].pop(old_idx)
+                        # logger.info(f"Deleted old state data for frame {(obj_key,objid,storage_key,old_idx)}")
             
 
             # Create slices of per-object outputs for subsequent interaction with each

@@ -14,7 +14,9 @@ from PIL import Image
 from tqdm import tqdm
 
 import decord
+import logging
 
+logger = logging.getLogger(__name__)
 
 def get_sdpa_settings():
     if torch.cuda.is_available():
@@ -131,6 +133,8 @@ class AsyncVideoFrameLoader:
         self.video_width = None
         self.compute_device = compute_device
 
+        logger.info(f"Loading frames asynchronously without blocking the session start")
+
         # load the first frame to fill video_height and video_width and also
         # to cache it (since it's most likely where the user will click)
         self.__getitem__(0)
@@ -166,7 +170,7 @@ class AsyncVideoFrameLoader:
         img /= self.img_std
         if not self.offload_video_to_cpu:
             img = img.to(self.compute_device, non_blocking=True)
-        self.images[index] = img
+        # self.images[index] = img
         return img
 
     def __len__(self):
@@ -188,7 +192,6 @@ class AsyncVideoLoader:
         compute_device,
         video_height,
         video_width,
-        nbr_frame_to_keep_in_memory=-1,
 
     ):
         self.video_generator = video_generator
@@ -205,12 +208,15 @@ class AsyncVideoLoader:
         self.video_width = video_width
         self.compute_device = compute_device
 
+        logger.info(f"AsyncVideoLoader : Loading frames asynchronously without blocking the session start")
+
         # load the first frame to fill video_height and video_width and also
         # to cache it (since it's most likely where the user will click)
         self.__getitem__(0)
 
         # load the rest of frames asynchronously without blocking the session start
         def _load_frames():
+            logger.error(f"AsyncVideoLoader : Loading frames asynchronously without blocking the session start")    
             try:
                 for n in tqdm(range(len(self.images)), desc="frame loading (JPEG)"):
                     self.__getitem__(n)
@@ -228,6 +234,7 @@ class AsyncVideoLoader:
 
         img = self.images[index]
         if img is not None:
+            logger.info(f"AsyncVideoLoader : Image {index} already loaded")
             return img
 
         img = self.video_generator[index]
@@ -266,6 +273,7 @@ def load_video_frames(
     Load the video frames from video_path. The frames are resized to image_size as in
     the model and are loaded to GPU if offload_video_to_cpu=False. This is used by the demo.
     """
+    logger.info(f"Loading video frames from {video_path}")
     is_bytes = isinstance(video_path, bytes)
     is_str = isinstance(video_path, str)
     is_mp4_path = is_str and os.path.splitext(video_path)[-1] in [".mp4", ".MP4"]
@@ -312,6 +320,7 @@ def load_video_frames_from_jpg_images(
 
     You can load a frame asynchronously by setting `async_loading_frames` to `True`.
     """
+    logger.info(f"Loading video frames nas images from {video_path}")
     if isinstance(video_path, str) and os.path.isdir(video_path):
         jpg_folder = video_path
     else:
@@ -349,7 +358,7 @@ def load_video_frames_from_jpg_images(
         )
         return lazy_images, lazy_images.video_height, lazy_images.video_width
 
-    images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float32)
+    images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float16)
     for n, img_path in enumerate(tqdm(img_paths, desc="frame loading (JPEG)")):
         images[n], video_height, video_width = _load_img_as_tensor(img_path, image_size)
     if not offload_video_to_cpu:
@@ -373,7 +382,7 @@ def load_video_frames_from_video_file(
 ):
     """Load the video frames from a video file."""
     import decord
-
+    logger.info(f"Loading video frames from video file {video_path}")
     img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None]
     img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None]
     # Get the original video height and width
@@ -398,6 +407,8 @@ def load_video_frames_from_video_file(
 
     for frame in video_generator:
         images.append(frame.permute(2, 0, 1))
+
+    logger.warning("Loading all video first before processing")
 
     images = torch.stack(images, dim=0).float() / 255.0
     if not offload_video_to_cpu:
