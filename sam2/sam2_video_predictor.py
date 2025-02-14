@@ -13,6 +13,7 @@ import cv2
 
 from sympy.physics.units import current
 from tqdm import tqdm
+import math
 
 from sam2.modeling.sam2_base import NO_OBJ_SCORE, SAM2Base
 from sam2.utils.misc import concat_points, fill_holes_in_mask_scores, load_video_frames, AsyncVideoFrameLoader
@@ -41,6 +42,10 @@ class SAM2VideoPredictor(SAM2Base):
         self.clear_non_cond_mem_around_input = clear_non_cond_mem_around_input
         self.clear_non_cond_mem_for_multi_obj = clear_non_cond_mem_for_multi_obj
         self.add_all_frames_to_correct_as_cond=add_all_frames_to_correct_as_cond
+
+        # memory monitoring
+        self.l_used =[]
+        self.l_free =[]
         
 
     # Initialize inference_state
@@ -854,7 +859,7 @@ class SAM2VideoPredictor(SAM2Base):
         # Commenting out this assertion, I personally think it's fine, releasing old conditional frames will inevitably clear the indices in consolidated_frame_inds, and in fact, these indices will not be used in subsequent propagation.
         # assert all_consolidated_frame_inds == input_frames_inds  # Ensure all consolidated frame indices match input frame indices
 
-    def print_gpu_memory(self):  # TODO: Temporarily used for development to check memory usage, will not be used in production
+    def print_gpu_memory(self, print_method=print, print_now=True):  # TODO: Temporarily used for development to check memory usage, will not be used in production
         try:
             # Use nvidia-smi to get memory information
             result = subprocess.check_output(
@@ -864,10 +869,17 @@ class SAM2VideoPredictor(SAM2Base):
             gpu_memory = [tuple(map(int, line.split(", "))) for line in result]
             if gpu_memory:
                 for idx, (used, free) in enumerate(gpu_memory):
-                    print(f"GPU{idx} Memory - Used: {used} MB, Free: {free} MB")
+                    self.l_used.append(used)
+                    self.l_free.append(free)
+                    if print_now:
+                        print_method(f"GPU Memory - Used: {min(self.l_used)} < {sum(self.l_used)/len(self.l_used)} < {max(self.l_used)} MB, Free: {min(self.l_free)} < {sum(self.l_free)/len(self.l_free)} < {max(self.l_free)} MB")
+                        self.l_used, self.l_free = [], []
         except Exception as e:
-            print(f"Error in getting GPU memory: {e}")
+            print_method(f"Error in getting GPU memory: {e}")
             return None
+        
+        
+
 
     @torch.inference_mode()
     def propagate_in_video(
@@ -876,6 +888,7 @@ class SAM2VideoPredictor(SAM2Base):
         start_frame_idx=None,
         max_frame_num_to_track=None,
         reverse=False,
+        print_gpumem_every=0
     ):
         """Propagate input points throughout the video for tracking."""
 
@@ -984,6 +997,9 @@ class SAM2VideoPredictor(SAM2Base):
                 inference_state, pred_masks
             )
 
+            # if print_gpumem_every:
+                # self.print_gpu_memory(print_method=tqdm.write, print_now=((frame_idx % print_gpumem_every) == 0))
+                    
             yield frame_idx, obj_ids, video_res_masks  # Return current frame index, object IDs, and video resolution masks
 
     def _add_output_per_object(
