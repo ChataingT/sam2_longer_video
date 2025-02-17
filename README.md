@@ -1,8 +1,5 @@
 # Segment 2 for long video
-Modification of cache management to limit the number of frame in memory
-
-## Use :
-Add the ´nbr_frame_to_keep_in_memory´ to the function predictor.propagate_in_video()
+Modification of memory management to work with longeur video 
 
 
 ```python
@@ -20,7 +17,7 @@ with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
     frame_idx, object_ids, masks = predictor.add_new_points_or_box(state, <your_prompts>):
 
     # propagate the prompts to get masklets throughout the video
-    for frame_idx, object_ids, masks in predictor.propagate_in_video(state, nbr_frame_to_keep_in_memory=42):
+    for frame_idx, object_ids, masks in predictor.propagate_in_video(state):
         ...
 ```
 ## Sources :
@@ -28,6 +25,8 @@ with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
 [https://github.com/facebookresearch/segment-anything-2/issues/264](https://github.com/facebookresearch/segment-anything-2/issues/264)
 
 [https://github.com/facebookresearch/segment-anything-2/issues/196](https://github.com/facebookresearch/segment-anything-2/issues/196)
+
+[https://github.com/motern88/Det-SAM2](https://github.com/motern88/Det-SAM2)
 
 ---------------------------------------------------------------------------------
 README from [SAM 2 original repository ](https://github.com/facebookresearch/sam2)
