@@ -44,7 +44,7 @@ class TestSAM2_LV(unittest.TestCase):
 
         this_file_path = pathlib.Path(__file__).parent.resolve()
         sam2_checkpoint = os.path.join(this_file_path,"../checkpoints/sam2.1_hiera_tiny.pt")
-        model_cfg = "./sam2.1_hiera_t.yaml"
+        model_cfg = "configs/sam2.1/sam2.1_hiera_t.yaml"
 
         predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=device)
 
@@ -75,7 +75,7 @@ class TestSAM2_LV(unittest.TestCase):
 
         # run propagation throughout the video and collect the results in a dict
         video_segments = {}  # video_segments contains the per-frame segmentation results
-        for out_frame_idx, out_obj_ids, out_mask_logits in predictor.propagate_in_video(inference_state, nbr_frame_to_keep_in_memory=60):
+        for out_frame_idx, out_obj_ids, out_mask_logits in predictor.propagate_in_video(inference_state, print_gpumem_every=1):
             video_segments[out_frame_idx] = {
                 out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
                 for i, out_obj_id in enumerate(out_obj_ids)
@@ -104,6 +104,8 @@ class TestSAM2_LV(unittest.TestCase):
             
         ground_truth_mask = torch.tensor(rle_to_mask(ground_truth_rle), dtype=torch.uint8)
 
+        print((mask.sum(), mask.shape))
+        print((ground_truth_mask.sum(), ground_truth_mask.shape))
         inter = torch.logical_and(ground_truth_mask, mask).sum()
         union = torch.logical_or(ground_truth_mask, mask).sum()
         iou = inter / union
