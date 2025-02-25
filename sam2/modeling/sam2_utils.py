@@ -16,44 +16,49 @@ import torch.nn.functional as F
 from sam2.utils.misc import mask_to_box
 
 
-def select_closest_cond_frames(frame_idx, cond_frame_outputs, max_cond_frame_num):
+def select_closest_cond_frames(frame_idx, cond_frame_outputs, max_cond_frame_num, preloading_memory_cond_frame_idx=None):
     """
-    Select up to `max_cond_frame_num` conditioning frames from `cond_frame_outputs`
-    that are temporally closest to the current frame at `frame_idx`. Here, we take
-    - a) the closest conditioning frame before `frame_idx` (if any);
-    - b) the closest conditioning frame after `frame_idx` (if any);
-    - c) any other temporally closest conditioning frames until reaching a total
-         of `max_cond_frame_num` conditioning frames.
+    从 `cond_frame_outputs` 中选择最多 `max_cond_frame_num` 个与当前帧 `frame_idx` 时间上最接近的条件帧。
+    - a) 选择 `frame_idx` 之前的最近条件帧（如果有的话）；
+    - b) 选择 `frame_idx` 之后的最近条件帧（如果有的话）；
+    - c) 选择其他时间上最接近的条件帧，直到总数达到 `max_cond_frame_num`。
 
-    Outputs:
-    - selected_outputs: selected items (keys & values) from `cond_frame_outputs`.
-    - unselected_outputs: items (keys & values) not selected in `cond_frame_outputs`.
+    输出：
+    - selected_outputs: 从 `cond_frame_outputs` 中选择的项目（键和值）。
+    - unselected_outputs: `cond_frame_outputs` 中未选择的项目（键和值）。
     """
     if max_cond_frame_num == -1 or len(cond_frame_outputs) <= max_cond_frame_num:
+        # 如果 `max_cond_frame_num` 为 -1 或条件帧的数量不超过最大条件帧数，直接返回所有输出
         selected_outputs = cond_frame_outputs
         unselected_outputs = {}
     else:
-        assert max_cond_frame_num >= 2, "we should allow using 2+ conditioning frames"
+        assert max_cond_frame_num >= 2, "我们应该允许使用2个或更多条件帧"
         selected_outputs = {}
 
-        # the closest conditioning frame before `frame_idx` (if any)
+        # 选择 `frame_idx` 之前的最近条件帧（如果有的话）
         idx_before = max((t for t in cond_frame_outputs if t < frame_idx), default=None)
         if idx_before is not None:
             selected_outputs[idx_before] = cond_frame_outputs[idx_before]
 
-        # the closest conditioning frame after `frame_idx` (if any)
+        # 选择 `frame_idx` 之后的最近条件帧（如果有的话）
         idx_after = min((t for t in cond_frame_outputs if t >= frame_idx), default=None)
         if idx_after is not None:
             selected_outputs[idx_after] = cond_frame_outputs[idx_after]
 
-        # add other temporally closest conditioning frames until reaching a total
-        # of `max_cond_frame_num` conditioning frames.
+        # 选择其他时间上最接近的条件帧，直到总数达到 `max_cond_frame_num`
         num_remain = max_cond_frame_num - len(selected_outputs)
         inds_remain = sorted(
             (t for t in cond_frame_outputs if t not in selected_outputs),
             key=lambda x: abs(x - frame_idx),
         )[:num_remain]
         selected_outputs.update((t, cond_frame_outputs[t]) for t in inds_remain)
+
+        if preloading_memory_cond_frame_idx is not None:
+            # 如果有预加载内存库中的条件帧，将其添加到选择的帧中
+            for t in preloading_memory_cond_frame_idx:
+                if t not in selected_outputs.keys():
+                    selected_outputs[t] = cond_frame_outputs[t]  # 将预加载帧加入到已选帧中
+
         unselected_outputs = {
             t: v for t, v in cond_frame_outputs.items() if t not in selected_outputs
         }
@@ -63,7 +68,7 @@ def select_closest_cond_frames(frame_idx, cond_frame_outputs, max_cond_frame_num
 
 def get_1d_sine_pe(pos_inds, dim, temperature=10000):
     """
-    Get 1D sine positional embedding as in the original Transformer paper.
+    获取1D正弦位置嵌入，按照原始Transformer论文中的方法。
     """
     pe_dim = dim // 2
     dim_t = torch.arange(pe_dim, dtype=torch.float32, device=pos_inds.device)
@@ -75,35 +80,39 @@ def get_1d_sine_pe(pos_inds, dim, temperature=10000):
 
 
 def get_activation_fn(activation):
-    """Return an activation function given a string"""
+    """根据字符串返回激活函数"""
     if activation == "relu":
         return F.relu
     if activation == "gelu":
         return F.gelu
     if activation == "glu":
         return F.glu
-    raise RuntimeError(f"activation should be relu/gelu, not {activation}.")
+    raise RuntimeError(f"activation 应该是 relu/gelu，而不是 {activation}.")
 
 
 def get_clones(module, N):
+    """
+    返回 `module` 的 N 个克隆
+    """
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 
 
 class DropPath(nn.Module):
-    # adapted from https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/drop.py
+    # 修改自 https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/drop.py
     def __init__(self, drop_prob=0.0, scale_by_keep=True):
         super(DropPath, self).__init__()
-        self.drop_prob = drop_prob
-        self.scale_by_keep = scale_by_keep
+        self.drop_prob = drop_prob  # dropout 概率
+        self.scale_by_keep = scale_by_keep  # 是否按保留概率缩放
 
     def forward(self, x):
         if self.drop_prob == 0.0 or not self.training:
+            # 如果 dropout 概率为0或者不在训练模式下，直接返回输入
             return x
-        keep_prob = 1 - self.drop_prob
-        shape = (x.shape[0],) + (1,) * (x.ndim - 1)
-        random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
+        keep_prob = 1 - self.drop_prob  # 计算保留概率
+        shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # 生成与输入相同的形状
+        random_tensor = x.new_empty(shape).bernoulli_(keep_prob)  # 根据保留概率生成随机张量
         if keep_prob > 0.0 and self.scale_by_keep:
-            random_tensor.div_(keep_prob)
+            random_tensor.div_(keep_prob)  # 按保留概率进行缩放
         return x * random_tensor
 
 
@@ -126,58 +135,59 @@ class MLP(nn.Module):
             nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim])
         )
         self.sigmoid_output = sigmoid_output
-        self.act = activation()
+        self.act = activation()  # 初始化激活函数
 
     def forward(self, x):
         for i, layer in enumerate(self.layers):
             x = self.act(layer(x)) if i < self.num_layers - 1 else layer(x)
         if self.sigmoid_output:
-            x = F.sigmoid(x)
+            x = F.sigmoid(x)  # 如果需要，应用 sigmoid 激活函数
         return x
 
 
-# From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py # noqa
-# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
+# 修改自 https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py # noqa
+# 来源于 https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
 class LayerNorm2d(nn.Module):
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
         super().__init__()
-        self.weight = nn.Parameter(torch.ones(num_channels))
-        self.bias = nn.Parameter(torch.zeros(num_channels))
-        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(num_channels))  # 权重参数
+        self.bias = nn.Parameter(torch.zeros(num_channels))  # 偏置参数
+        self.eps = eps  # 平滑因子
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        u = x.mean(1, keepdim=True)
-        s = (x - u).pow(2).mean(1, keepdim=True)
-        x = (x - u) / torch.sqrt(s + self.eps)
-        x = self.weight[:, None, None] * x + self.bias[:, None, None]
+        u = x.mean(1, keepdim=True)  # 计算均值
+        s = (x - u).pow(2).mean(1, keepdim=True)  # 计算方差
+        x = (x - u) / torch.sqrt(s + self.eps)  # 归一化
+        x = self.weight[:, None, None] * x + self.bias[:, None, None]  # 应用权重和偏置
         return x
-
 
 def sample_box_points(
     masks: torch.Tensor,
-    noise: float = 0.1,  # SAM default
-    noise_bound: int = 20,  # SAM default
+    noise: float = 0.1,  # SAM 默认值
+    noise_bound: int = 20,  # SAM 默认值
     top_left_label: int = 2,
     bottom_right_label: int = 3,
 ) -> Tuple[np.array, np.array]:
     """
-    Sample a noised version of the top left and bottom right corners of a given `bbox`
+    为给定的 `bbox` 采样加噪的左上角和右下角坐标
 
-    Inputs:
-    - masks: [B, 1, H,W] boxes, dtype=torch.Tensor
-    - noise: noise as a fraction of box width and height, dtype=float
-    - noise_bound: maximum amount of noise (in pure pixesl), dtype=int
+    输入:
+    - masks: [B, 1, H, W] 形状的 box 掩码, 类型为 torch.Tensor
+    - noise: 噪声值，表示为 box 宽度和高度的比例，类型为 float
+    - noise_bound: 噪声的最大限制（以像素为单位），类型为 int
 
-    Returns:
-    - box_coords: [B, num_pt, 2], contains (x, y) coordinates of top left and bottom right box corners, dtype=torch.float
-    - box_labels: [B, num_pt], label 2 is reserverd for top left and 3 for bottom right corners, dtype=torch.int32
+    输出:
+    - box_coords: [B, num_pt, 2]，包含左上角和右下角 box 角点的 (x, y) 坐标，类型为 torch.float
+    - box_labels: [B, num_pt]，label 2 表示左上角，3 表示右下角，类型为 torch.int32
     """
     device = masks.device
-    box_coords = mask_to_box(masks)
+    box_coords = mask_to_box(masks)  # 将掩码转换为 box 坐标
     B, _, H, W = masks.shape
     box_labels = torch.tensor(
         [top_left_label, bottom_right_label], dtype=torch.int, device=device
     ).repeat(B)
+
+    # 加入噪声
     if noise > 0.0:
         if not isinstance(noise_bound, torch.Tensor):
             noise_bound = torch.tensor(noise_bound, device=device)
@@ -191,29 +201,28 @@ def sample_box_points(
         box_coords = box_coords + box_noise
         img_bounds = (
             torch.tensor([W, H, W, H], device=device) - 1
-        )  # uncentered pixel coords
-        box_coords.clamp_(torch.zeros_like(img_bounds), img_bounds)  # In place clamping
+        )  # 不使用中心化的像素坐标
+        box_coords.clamp_(torch.zeros_like(img_bounds), img_bounds)  # 在坐标范围内进行裁剪
 
-    box_coords = box_coords.reshape(-1, 2, 2)  # always 2 points
+    box_coords = box_coords.reshape(-1, 2, 2)  # 始终返回 2 个点
     box_labels = box_labels.reshape(-1, 2)
     return box_coords, box_labels
 
 
 def sample_random_points_from_errors(gt_masks, pred_masks, num_pt=1):
     """
-    Sample `num_pt` random points (along with their labels) independently from the error regions.
+    从错误区域随机采样 `num_pt` 个点及其标签
 
-    Inputs:
-    - gt_masks: [B, 1, H_im, W_im] masks, dtype=torch.bool
-    - pred_masks: [B, 1, H_im, W_im] masks, dtype=torch.bool or None
-    - num_pt: int, number of points to sample independently for each of the B error maps
+    输入:
+    - gt_masks: [B, 1, H_im, W_im]，ground truth 掩码，类型为 torch.bool
+    - pred_masks: [B, 1, H_im, W_im]，预测掩码，类型为 torch.bool 或 None
+    - num_pt: int，表示要独立采样的点数
 
-    Outputs:
-    - points: [B, num_pt, 2], dtype=torch.float, contains (x, y) coordinates of each sampled point
-    - labels: [B, num_pt], dtype=torch.int32, where 1 means positive clicks and 0 means
-      negative clicks
+    输出:
+    - points: [B, num_pt, 2]，类型为 torch.float，包含每个采样点的 (x, y) 坐标
+    - labels: [B, num_pt]，类型为 torch.int32，1 表示正点击，0 表示负点击
     """
-    if pred_masks is None:  # if pred_masks is not provided, treat it as empty
+    if pred_masks is None:  # 如果未提供 pred_masks，视为空
         pred_masks = torch.zeros_like(gt_masks)
     assert gt_masks.dtype == torch.bool and gt_masks.size(1) == 1
     assert pred_masks.dtype == torch.bool and pred_masks.shape == gt_masks.shape
@@ -222,22 +231,16 @@ def sample_random_points_from_errors(gt_masks, pred_masks, num_pt=1):
     B, _, H_im, W_im = gt_masks.shape
     device = gt_masks.device
 
-    # false positive region, a new point sampled in this region should have
-    # negative label to correct the FP error
+    # false positive 区域：采样点应有负标签以修正 FP 错误
     fp_masks = ~gt_masks & pred_masks
-    # false negative region, a new point sampled in this region should have
-    # positive label to correct the FN error
+    # false negative 区域：采样点应有正标签以修正 FN 错误
     fn_masks = gt_masks & ~pred_masks
-    # whether the prediction completely match the ground-truth on each mask
+    # 预测是否与 ground-truth 完全匹配
     all_correct = torch.all((gt_masks == pred_masks).flatten(2), dim=2)
     all_correct = all_correct[..., None, None]
 
-    # channel 0 is FP map, while channel 1 is FN map
+    # 通道 0 是 FP 区域图，通道 1 是 FN 区域图
     pts_noise = torch.rand(B, num_pt, H_im, W_im, 2, device=device)
-    # sample a negative new click from FP region or a positive new click
-    # from FN region, depend on where the maximum falls,
-    # and in case the predictions are all correct (no FP or FN), we just
-    # sample a negative click from the background region
     pts_noise[..., 0] *= fp_masks | (all_correct & ~gt_masks)
     pts_noise[..., 1] *= fn_masks
     pts_idx = pts_noise.flatten(2).argmax(dim=2)
@@ -251,18 +254,16 @@ def sample_random_points_from_errors(gt_masks, pred_masks, num_pt=1):
 
 def sample_one_point_from_error_center(gt_masks, pred_masks, padding=True):
     """
-    Sample 1 random point (along with its label) from the center of each error region,
-    that is, the point with the largest distance to the boundary of each error region.
-    This is the RITM sampling method from https://github.com/saic-vul/ritm_interactive_segmentation/blob/master/isegm/inference/clicker.py
+    从每个错误区域的中心采样 1 个点（错误区域到边界最远的点），使用 RITM 方法
 
-    Inputs:
-    - gt_masks: [B, 1, H_im, W_im] masks, dtype=torch.bool
-    - pred_masks: [B, 1, H_im, W_im] masks, dtype=torch.bool or None
-    - padding: if True, pad with boundary of 1 px for distance transform
+    输入:
+    - gt_masks: [B, 1, H_im, W_im] 掩码，类型为 torch.bool
+    - pred_masks: [B, 1, H_im, W_im] 掩码，类型为 torch.bool 或 None
+    - padding: 是否在边界处填充 1 像素，用于距离变换
 
-    Outputs:
-    - points: [B, 1, 2], dtype=torch.float, contains (x, y) coordinates of each sampled point
-    - labels: [B, 1], dtype=torch.int32, where 1 means positive clicks and 0 means negative clicks
+    输出:
+    - points: [B, 1, 2]，类型为 torch.float，包含每个采样点的 (x, y) 坐标
+    - labels: [B, 1]，类型为 torch.int32，1 表示正点击，0 表示负点击
     """
     import cv2
 
@@ -274,11 +275,9 @@ def sample_one_point_from_error_center(gt_masks, pred_masks, padding=True):
     B, _, _, W_im = gt_masks.shape
     device = gt_masks.device
 
-    # false positive region, a new point sampled in this region should have
-    # negative label to correct the FP error
+    # false positive 区域，采样负标签
     fp_masks = ~gt_masks & pred_masks
-    # false negative region, a new point sampled in this region should have
-    # positive label to correct the FN error
+    # false negative 区域，采样正标签
     fn_masks = gt_masks & ~pred_masks
 
     fp_masks = fp_masks.cpu().numpy()
@@ -291,14 +290,12 @@ def sample_one_point_from_error_center(gt_masks, pred_masks, padding=True):
         if padding:
             fn_mask = np.pad(fn_mask, ((1, 1), (1, 1)), "constant")
             fp_mask = np.pad(fp_mask, ((1, 1), (1, 1)), "constant")
-        # compute the distance of each point in FN/FP region to its boundary
         fn_mask_dt = cv2.distanceTransform(fn_mask.astype(np.uint8), cv2.DIST_L2, 0)
         fp_mask_dt = cv2.distanceTransform(fp_mask.astype(np.uint8), cv2.DIST_L2, 0)
         if padding:
             fn_mask_dt = fn_mask_dt[1:-1, 1:-1]
             fp_mask_dt = fp_mask_dt[1:-1, 1:-1]
 
-        # take the point in FN/FP region with the largest distance to its boundary
         fn_mask_dt_flat = fn_mask_dt.reshape(-1)
         fp_mask_dt_flat = fp_mask_dt.reshape(-1)
         fn_argmax = np.argmax(fn_mask_dt_flat)
@@ -313,11 +310,13 @@ def sample_one_point_from_error_center(gt_masks, pred_masks, padding=True):
     labels = labels.to(device)
     return points, labels
 
-
 def get_next_point(gt_masks, pred_masks, method):
+    """
+    根据指定的采样方法获取下一个点
+    """
     if method == "uniform":
         return sample_random_points_from_errors(gt_masks, pred_masks)
     elif method == "center":
         return sample_one_point_from_error_center(gt_masks, pred_masks)
     else:
-        raise ValueError(f"unknown sampling method {method}")
+        raise ValueError(f"未知的采样方法 {method}")
