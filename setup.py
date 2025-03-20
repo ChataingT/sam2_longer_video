@@ -22,21 +22,21 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 # Required dependencies
 REQUIRED_PACKAGES = [
-    # "torch>=2.4.1",
-    # "torchvision>=0.18.1",
-    # "numpy>=1.24.4",
-    # "tqdm>=4.66.1",
-    # "hydra-core>=1.3.2",
-    # "iopath>=0.1.10",
-    # "pillow>=9.4.0",
+    "torch>=2.4.1",
+    "torchvision>=0.18.1",
+    "numpy>=1.24.4",
+    "tqdm>=4.66.1",
+    "hydra-core>=1.3.2",
+    "iopath>=0.1.10",
+    "pillow>=9.4.0",
 ]
 
 EXTRA_PACKAGES = {
     "notebooks": [
-        # "matplotlib>=3.9.1",
-        # "jupyter>=1.0.0",
-        # "opencv-python>=4.7.0",
-        # "eva-decord>=0.6.1",
+        "matplotlib>=3.9.1",
+        "jupyter>=1.0.0",
+        "opencv-python>=4.7.0",
+        "eva-decord>=0.6.1",
     ],
     "dev": [
         # "black==24.2.0",
@@ -63,7 +63,7 @@ BUILD_CUDA = os.getenv("SAM2_BUILD_CUDA", "1") == "1"
 # By default, we allow SAM 2 installation to proceed even with build errors.
 # You may force stopping on errors with `export SAM2_BUILD_ALLOW_ERRORS=0`.
 BUILD_ALLOW_ERRORS = os.getenv("SAM2_BUILD_ALLOW_ERRORS", "1") == "1"
-
+BUILD_ALLOW_ERRORS = 0
 # Catch and skip errors during extension building and print a warning message
 # (note that this message only shows up under verbose build mode
 # "pip install -v -e ." or "python setup.py build_ext -v")

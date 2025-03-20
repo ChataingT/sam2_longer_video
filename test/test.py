@@ -44,7 +44,7 @@ class TestSAM2_LV(unittest.TestCase):
 
         this_file_path = pathlib.Path(__file__).parent.resolve()
         sam2_checkpoint = os.path.join(this_file_path,"../checkpoints/sam2.1_hiera_tiny.pt")
-        model_cfg = "configs/sam2.1/sam2.1_hiera_t.yaml"
+        model_cfg = "sam2.1_hiera_t.yaml"
 
         predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=device)
 
