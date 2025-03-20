@@ -1,5 +1,10 @@
 ## Installation
+## ND from experiences : 
+"""
+conda create -n segment python=3.10
+pip3 install -e ".[notebooks]" --extra-index-url https://download.pytorch.org/whl/cu126
 
+"""
 ### Requirements
 
 - Linux with Python ≥ 3.10, PyTorch ≥ 2.3.1 and [torchvision](https://github.com/pytorch/vision/) that matches the PyTorch installation. Install them together at https://pytorch.org to ensure this.
