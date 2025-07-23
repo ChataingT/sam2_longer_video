@@ -1,0 +1,72 @@
+# SAM2 Model Service Dockerfile
+# ARG BASE_IMAGE=pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
+ARG BASE_IMAGE=pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime
+ARG MODEL_SIZE=tiny
+
+FROM ${BASE_IMAGE}
+
+# Environment variables
+ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
+ENV CUDA_HOME="/usr/local/cuda"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="${PATH}:/home/user/.local/bin"
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 6.2 7.0 7.5 8.0 8.6+PTX 8.7 8.9"
+
+# SAM 2 environment variables
+ENV APP_ROOT=/opt/sam2_lv
+ENV PYTHONPATH=":${APP_ROOT}"
+ENV PYTHONUNBUFFERED=1
+ENV SAM2_BUILD_CUDA=0
+ENV SAM2_BUILD_ALLOW_ERRORS=0
+ENV MODEL_SIZE=tiny
+
+# Install system requirements
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libavutil-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    pkg-config \
+    build-essential \
+    libffi-dev \
+    ninja-build \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+RUN mkdir ${APP_ROOT}
+WORKDIR ${APP_ROOT}
+
+# Copy SAM 2 source code
+COPY sam2 ./sam2
+COPY test ./test
+COPY setup.py .
+COPY README.md .
+
+# Create checkpoints directory
+RUN mkdir -p ${APP_ROOT}/checkpoints
+
+# Download SAM 2.1 checkpoints
+ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_tiny.pt
+ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_small.pt
+ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_base_plus.pt
+ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_large.pt
+
+# Install Python dependencies
+RUN pip install --upgrade pip setuptools
+# Install SAM 2 package in editable mode
+RUN pip install -e ".[dev]"
+
+# Install additional dependencies for the model service
+RUN pip install fastapi uvicorn requests
+
+# Expose port for model service
+EXPOSE 8001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# Default command to run the model service
+CMD ["uvicorn", "sam2.server.model_service", "--host", "0.0.0.0", "--port", "8001"]

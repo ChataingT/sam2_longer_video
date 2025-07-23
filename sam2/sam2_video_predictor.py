@@ -9,11 +9,11 @@ from collections import OrderedDict
 
 import torch
 import gc
-import cv2
+# import cv2
 
 from sympy.physics.units import current
 from tqdm import tqdm
-import math
+# import math
 
 from sam2.modeling.sam2_base import NO_OBJ_SCORE, SAM2Base
 from sam2.utils.misc import concat_points, fill_holes_in_mask_scores, load_video_frames, AsyncVideoFrameLoader
