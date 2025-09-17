@@ -1,88 +1,65 @@
-# ARG BASE_IMAGE=pytorch/pytorch:2.3.1-cuda12.1-cudnn8-devel
-ARG BASE_IMAGE=pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
-ARG MODEL_SIZE=tiny
+# Use PyTorch official image with CUDA 12.6 and cuDNN 9 development environment
+# This provides a complete ML/DL stack with GPU support for deep learning workloads
+FROM pytorch/pytorch:2.8.0-cuda12.6-cudnn9-devel
 
-FROM ${BASE_IMAGE}
+# Configure NVIDIA GPU access within the container
+# NVIDIA_VISIBLE_DEVICES=all makes all GPUs available to the container
+# NVIDIA_DRIVER_CAPABILITIES specifies which GPU capabilities to expose
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-# Gunicorn environment variables
-# ENV GUNICORN_WORKERS=1
-# ENV GUNICORN_THREADS=2
-# ENV GUNICORN_PORT=5000
-
-ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
-ENV CUDA_HOME="/usr/local/cuda"
+# Prevent interactive prompts during package installations
+# This ensures automated builds don't hang waiting for user input
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PATH="${PATH}:/home/user/.local/bin"
-ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 6.2 7.0 7.5 8.0 8.6+PTX 8.7 8.9"
 
+# Define supported CUDA compute capabilities for PyTorch compilation
+# Covers GPU architectures from Pascal (6.0) to Ampere (8.6) and future compatibility (+PTX)
+ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6+PTX"
 
-# SAM 2 environment variables
-ENV APP_ROOT=/opt/sam2_lv
-ENV PYTHONPATH=":${APP_ROOT}"
+# Set the working directory where the application will be installed and run
+WORKDIR /opt/chataint
 
-ENV PYTHONUNBUFFERED=1
-# ENV SAM2_BUILD_CUDA=1
-ENV SAM2_BUILD_CUDA=0
-ENV SAM2_BUILD_ALLOW_ERRORS=0
-# ENV MODEL_SIZE=${MODEL_SIZE}
-ENV MODEL_SIZE=tiny
+# Install essential build tools and utilities
+# - build-essential: GCC compiler and build tools for compiling extensions
+# - curl: For downloading files from URLs
+# - git: Version control system for cloning repositories
+RUN apt-get update && \
+    apt-get -y install build-essential curl git
 
-# Install system requirements
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libavutil-dev \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    pkg-config \
-    build-essential \
-    libffi-dev \
-    ninja-build
+    # Install system dependencies required for OpenCV and GUI applications
+# These packages are essential for computer vision and image processing:
+# - git: Version control (additional install for completeness)
+# - libgl1: OpenGL library for graphics rendering
+# - libglib2.0-0: GLib library for low-level system functionality
+# - libsm6, libxext6, libxrender-dev: X11 libraries for display and rendering
+# Clean up package cache to reduce image size
+RUN apt-get update && apt-get install -y \
+    git \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+ && rm -rf /var/lib/apt/lists/*
+ 
+# Clone the SAM2 (Segment Anything Model 2) repository for longer video processing
+# This is a fork with enhancements for processing longer video sequences
+RUN git clone https://github.com/ChataingT/sam2_longer_video.git
 
+# Download pre-trained model checkpoints
+# These are the neural network weights required for SAM2 inference
+RUN cd sam2_longer_video/checkpoints/ && ./download_ckpts.sh
 
-RUN mkdir ${APP_ROOT}
-WORKDIR ${APP_ROOT}
+# Install SAM2 package in development mode with notebook dependencies
+# -e flag installs in editable mode for development
+# [notebooks] includes Jupyter notebook dependencies
+# --extra-index-url specifies PyTorch's CUDA 12.6 wheel repository
+RUN cd sam2_longer_video && python -m pip install -e ".[notebooks]" --extra-index-url https://download.pytorch.org/whl/cu126
 
-# Copy SAM 2 inference files
-COPY sam2 ./sam2
-COPY test ./test
+# Alternative method to download SAM2 weights directly (currently commented out)
+# This would download the large model weights from Facebook's official repository
+# RUN curl -O https://dl.fbaipublicfiles.com/segment_anything_2/072824/sam2_hiera_large.pt
 
-
-COPY setup.py .
-COPY README.md .
-
-
-# Download SAM 2.1 checkpoints
-ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_tiny.pt
-ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_small.pt
-ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_base_plus.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_base_plus.pt
-ADD https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt ${APP_ROOT}/checkpoints/sam2.1_hiera_large.pt
-
-
-
-RUN pip install --upgrade pip setuptools
-RUN pip install -e ".[dev]" -v
-# RUN pip install -e ".[dev]"
-# RUN python setup.py build_ext --inplace
-
-# https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite/issues/69#issuecomment-1826764707
-# RUN rm /opt/conda/bin/ffmpeg && ln -s /bin/ffmpeg /opt/conda/bin/ffmpeg
-
-
-
-# Copy backend server files
-# COPY demo/backend/server ${APP_ROOT}/server
-
-
-
-
-# https://pythonspeed.com/articles/gunicorn-in-docker/
-# CMD gunicorn --worker-tmp-dir /dev/shm \
-#     --worker-class gthread app:app \
-#     --log-level info \
-#     --access-logfile /dev/stdout \
-#     --log-file /dev/stderr \
-#     --workers ${GUNICORN_WORKERS} \
-#     --threads ${GUNICORN_THREADS} \
-#     --bind 0.0.0.0:${GUNICORN_PORT} \
-#     --timeout 60
+# Set the default command when the container starts
+# Opens a bash shell for interactive use of the container
+CMD ["bash"]
