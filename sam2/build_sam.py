@@ -117,14 +117,14 @@ def build_sam2_video_predictor(
     apply_postprocessing=True,
     **kwargs,
 ):
-    # 设置 Hydra 覆盖选项，初始化 SAM2 视频预测器
+    # Set up Hydra override options to initialize SAM2 video predictor
     hydra_overrides = [
         "++model._target_=sam2.sam2_video_predictor.SAM2VideoPredictor",
     ]
     if apply_postprocessing:
         hydra_overrides_extra = hydra_overrides_extra.copy()
         hydra_overrides_extra += [
-            # 如果单一掩码不稳定，则动态回退到多掩码
+            # Dynamically fall back to multi-mask if single mask is unstable
             "++model.sam_mask_decoder_extra_args.dynamic_multimask_via_stability=true",
             "++model.sam_mask_decoder_extra_args.dynamic_multimask_stability_delta=0.05",
             "++model.sam_mask_decoder_extra_args.dynamic_multimask_stability_thresh=0.98",

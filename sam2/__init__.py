@@ -7,5 +7,7 @@
 from hydra import initialize_config_module
 from hydra.core.global_hydra import GlobalHydra
 
+from .sam2_video_predictor import SAM2VideoPredictor
+
 if not GlobalHydra.instance().is_initialized():
     initialize_config_module("sam2/configs/sam2_1", version_base="1.2")
