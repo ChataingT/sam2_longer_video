@@ -1,5 +1,7 @@
 import os
+import gc
 import sys
+import json
 import torch 
 import logging
 
@@ -35,7 +37,7 @@ class SamManager():
         else:
             device = torch.device("cpu")
         
-        log.info(f"using device: {device}")
+        log.info(f"Using device: {device}")
 
         if device.type == "cuda":
             # use bfloat16 for the entire notebook
@@ -133,23 +135,140 @@ class SamManager():
     def propagate_in_video(self, start_frame_idx=None,
                                  max_frame_num_to_track=None,
                                  reverse=False,
-                                 print_gpumem_every=0):
+                                 print_gpumem_every=0,
+                                 save_checkpoint_base=None,
+                                 video_name=None,
+                                 batch_size=10000):
         """
         Propagate sam inference until the idx_frame
-        """
-        log.info(f"Propagate till {max_frame_num_to_track}")
-        propagater = self.predictor.propagate_in_video(self.inference_state, 
-                                                        start_frame_idx=start_frame_idx,
-                                                        max_frame_num_to_track=max_frame_num_to_track,
-                                                        reverse=reverse,
-                                                        print_gpumem_every=print_gpumem_every
-                                                        )
-                
-        for frame_idx, object_ids, mask_logits in propagater:
-            masks = FrameMask(target_ids=object_ids, mask_logits=mask_logits)
-            self.frames.update_or_create(frame_idx=frame_idx,  masks=masks)
 
-        return self.frames
+        Arguments:
+        - start_frame_idx: first frame index to process (default 0)
+        - max_frame_num_to_track: number of frames to process (required)
+        - batch_size: number of frames to process per batch
+        - save_checkpoint_base: directory to save per-batch checkpoints (optional)
+        """
+
+        log.info(f"Propagate till {max_frame_num_to_track}")
+        # propagater = self.predictor.propagate_in_video(self.inference_state, 
+        #                                                 start_frame_idx=start_frame_idx,
+        #                                                 max_frame_num_to_track=max_frame_num_to_track,
+        #                                                 reverse=reverse,
+        #                                                 print_gpumem_every=print_gpumem_every
+        #                                                 )
+                
+        # for frame_idx, object_ids, mask_logits in propagater:
+        #     masks = FrameMask(target_ids=object_ids, mask_logits=mask_logits)
+        #     self.frames.update_or_create(frame_idx=frame_idx,  masks=masks)
+
+        batch_count = max_frame_num_to_track // batch_size
+        if ((max_frame_num_to_track % batch_size) != 0) and (max_frame_num_to_track > batch_size):
+            log.info(f"Max frame num to track {max_frame_num_to_track} is not a multiple of batch size {batch_size}, increasing batch count by 1")
+            batch_count += 1
+
+        if save_checkpoint_base and batch_count > 1:
+
+            log.info(f"Batch count: {batch_count}, Batch size: {batch_size}")
+            start_frame_idx = start_frame_idx if start_frame_idx is not None else 0
+
+            for i in range(batch_count):
+                local_max_frame = min(batch_size-1, max_frame_num_to_track - start_frame_idx) 
+                
+                log.info(f"Propagate from {start_frame_idx} to {local_max_frame+start_frame_idx}")
+                for frame_idx, object_ids, mask_logits in self.predictor.propagate_in_video(self.inference_state, 
+                                                                start_frame_idx=start_frame_idx,
+                                                                max_frame_num_to_track=local_max_frame,
+                                                                reverse=reverse,
+                                                                print_gpumem_every=print_gpumem_every
+                                                                # nbr_frame_to_keep_in_memory=self.nbr_frame_to_keep_in_memory
+                                                                ):
+                    masks = FrameMask(target_ids=object_ids, mask_logits=mask_logits)
+                    self.frames.update_or_create(frame_idx=frame_idx,  masks=masks)
+
+                # checkpoint save
+                os.makedirs(save_checkpoint_base, exist_ok=True)
+                save_dict = {
+                    "video_name": video_name,
+                    "start_frame_idx": start_frame_idx,
+                    "checkpoint": True,
+                    "max_frame_num_to_track": local_max_frame,
+                    "frames": self.frames.get_frames_for_http_request(),
+                }
+                checkpoint_path = os.path.join(
+                    save_checkpoint_base,
+                    f"{video_name.split('.')[0]}_checkpoint_mask_{start_frame_idx}-{start_frame_idx + local_max_frame}.json"
+                )
+                log.info(f"Saving checkpoint to {checkpoint_path}")
+                with open(checkpoint_path, "w", encoding="utf-8") as f:
+                    import json
+                    json.dump(save_dict, f, ensure_ascii=False, indent=4)
+                self.checkpoints_path.append(checkpoint_path)
+
+                # TEST for memory
+                self.frames = self.frames.clean_frames()  # reset frame manager to save memory
+                gc.collect()
+
+                start_frame_idx = (i + 1) * batch_size
+            
+        else:
+            for frame_idx, object_ids, mask_logits in self.predictor.propagate_in_video(self.inference_state, 
+                                                            start_frame_idx=start_frame_idx,
+                                                            max_frame_num_to_track=max_frame_num_to_track,
+                                                            reverse=reverse,
+                                                            print_gpumem_every=print_gpumem_every
+                                                            # nbr_frame_to_keep_in_memory=self.nbr_frame_to_keep_in_memory
+                                                            ):
+                masks = FrameMask(target_ids=object_ids, mask_logits=mask_logits)
+                self.frames.update_or_create(frame_idx=frame_idx,  masks=masks)
+
+            # checkpoint save
+            save_dict = {
+                "video_name": video_name,
+                "start_frame_idx": start_frame_idx,
+                "checkpoint": False,
+                "max_frame_num_to_track": max_frame_num_to_track,
+                "frames": self.frames.get_frames_for_http_request(),
+            }
+            checkpoint_path = os.path.join(save_checkpoint_base, f"{video_name.split('.')[0]}_checkpoint_mask_{start_frame_idx}-{start_frame_idx + max_frame_num_to_track}.json")
+            log.info(f"Saving checkpoint to {checkpoint_path}")
+            with open(checkpoint_path, "w", encoding="utf-8") as f:
+                import json
+                json.dump(save_dict, f, ensure_ascii=False, indent=4)
+            self.checkpoints_path.append(checkpoint_path)
+
+            # TEST for memory
+            self.frames = self.frames.clean_frames()  # reset frame manager to save memory
+            gc.collect()
+
+        merged_frames = self.merge_checkpoints(video_name=video_name, save_path=save_checkpoint_base)
+
+        self.reset_state()
+
+        return merged_frames
+    
+    def _merge_checkpoints(self, video_name:str, save_path:str):
+        """
+        Merge all checkpoints saved during propagation
+        """
+        log.info(f"Merging {len(self.checkpoints_path)} checkpoints for video {video_name}")
+        merged_json = {}
+        first = True
+        for json_file in self.checkpoints_path:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if first:
+                    merged_json = data
+                    merged_json['checkpoint'] = False
+                    first = False
+                else:
+                    merged_json["frames"].update(data["frames"])
+
+        merged_path = os.path.join(save_path, f"{video_name.split('.')[0]}_merged_mask.json")
+        with open(merged_path, "w", encoding="utf-8") as f:
+            json.dump(merged_json, f, ensure_ascii=False, indent=4)
+        log.info(f"Merged checkpoints saved to {merged_path}")
+
+        return merged_json
     
     def reset_state(self):
         """

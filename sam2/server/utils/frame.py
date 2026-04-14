@@ -4,6 +4,9 @@ from .bbox import BBox
 from .point import Point
 from .mask import FrameMask
 
+import logging
+log = logging.getLogger(__name__)
+
 class Frame():
 
     def __init__(self, idx) -> None:    
@@ -50,9 +53,9 @@ class Frame():
 
 class FrameManager():
     """
-    By design frames will be a list where the id == to the frame idx
+    By design frames will be a dict where the id == to the frame idx
     """
-    frames:list = []
+    frames:dict = {}
 
     def update_or_create(self, frame_idx:int, point:Point=None, bbox:BBox=None, masks:FrameMask=None):
         """Add information to a frame. If the frane has not been created yet, it is.
@@ -64,17 +67,14 @@ class FrameManager():
             bbox (BBox): one bbox
             mask (FrameMask): the mask of the frame
         """
-        if frame_idx >= (len(self.frames)-1):
-            for i in range(len(self.frames), frame_idx+1):
-                self.frames.append(Frame(idx=i))
-            # self.frames = self.frames + [Frame(idx=frame_idx)]*(frame_idx - len(self.frames) +1)  # +1 because frame_idx start at 0
+        if frame_idx not in self.frames:
+            self.frames[frame_idx] = Frame(idx=frame_idx)
         self.frames[frame_idx] = self.frames[frame_idx].update(point=point, bbox=bbox, masks=masks)
-        
         return self
     
 
     def load_frames(self, frames: List[Frame]):
-        self.frames = frames
+        self.frames = {frame.idx: frame for frame in frames}
         return
 
     def __getitem__(self, id):
@@ -86,5 +86,9 @@ class FrameManager():
         return f"{[f for f in self.frames]}"
     
     def get_frames_for_http_request(self):
-        return [Frame.to_dict(frame) for frame in self.frames]
+        return {frame.idx: Frame.to_dict(frame) for frame in self.frames.values()}
+    
+    def clean_frames(self):
+        self.frames = {}
+        return self
 

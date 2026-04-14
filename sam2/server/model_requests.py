@@ -28,6 +28,9 @@ class PropagateRequest(BaseModel):
     max_frame_num_to_track: int = None
     reverse: bool = False
     print_gpumem_every: int = 0
+    save_checkpoint_base: str = None
+    video_name: str = None
+    batch_size: int = 10000
 
 # -------------------
 # LEGACY REQUEST MODELS (for compatibility with main webapp)
