@@ -17,7 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV TORCH_CUDA_ARCH_LIST="6.0 6.1 7.0 7.5 8.0 8.6+PTX"
 
 # Set the working directory where the application will be installed and run
-WORKDIR /opt/chataint
+WORKDIR /app
 
 # Install essential build tools and utilities
 # - build-essential: GCC compiler and build tools for compiling extensions
@@ -44,7 +44,7 @@ RUN apt-get update && apt-get install -y \
  
 # Clone the SAM2 (Segment Anything Model 2) repository for longer video processing
 # This is a fork with enhancements for processing longer video sequences
-RUN git clone https://github.com/ChataingT/sam2_longer_video.git
+RUN git clone --branch dev-sam-service --single-branch --depth 1 https://github.com/ChataingT/sam2_longer_video.git
 
 # Download pre-trained model checkpoints
 # These are the neural network weights required for SAM2 inference
@@ -62,4 +62,8 @@ RUN cd sam2_longer_video && python -m pip install -e ".[notebooks]" --extra-inde
 
 # Set the default command when the container starts
 # Opens a bash shell for interactive use of the container
-CMD ["bash"]
+# CMD ["bash"]
+
+# Start server
+WORKDIR /app/sam2_longer_video
+CMD ["python3", "sam2/server/model_service.py"]
