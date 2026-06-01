@@ -12,6 +12,7 @@ import unittest
 import pathlib
 
 
+
 from sam2.utils.display import show_box, show_mask, show_points
 from sam2.utils.amg import mask_to_rle_pytorch, rle_to_mask
 
@@ -42,16 +43,17 @@ class TestSAM2_LV(unittest.TestCase):
 
         from sam2.build_sam import build_sam2_video_predictor
 
-        this_file_path = pathlib.Path(__file__).parent.resolve()
-        sam2_checkpoint = os.path.join(this_file_path,"../checkpoints/sam2.1_hiera_tiny.pt")
+        this_file_path = pathlib.Path(__file__).resolve().parent
+        sam2_checkpoint = this_file_path.parent / "checkpoints" / "sam2.1_hiera_tiny.pt"
         model_cfg = "sam2.1_hiera_t.yaml"
 
-        predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=device)
+        predictor = build_sam2_video_predictor(model_cfg, str(sam2_checkpoint), device=device)
 
         # `video_dir` a directory of JPEG frames with filenames like `<frame_index>.jpg`
-        video = os.path.join(this_file_path,"./assets/bedroom.mp4")
+        video = this_file_path / "assets" / "bedroom.mp4"
 
-        inference_state = predictor.init_state(video_path=video,
+        print(f"Loading video from {video}...")
+        inference_state = predictor.init_state(video_path=str(video),
                                                     offload_video_to_cpu=True,
                                                     offload_state_to_cpu=True,
                                                     async_loading_frames=True)
@@ -99,7 +101,7 @@ class TestSAM2_LV(unittest.TestCase):
 
         # rle_mask = rle_mask[0]
 
-        with open(os.path.join(this_file_path,f"assets/bedroom_frame{last_id}_mask.json"), "r") as fd:
+        with open(this_file_path / "assets" / f"bedroom_frame{last_id}_mask.json", "r") as fd:
             ground_truth_rle = json.load(fd)
             
         ground_truth_mask = torch.tensor(rle_to_mask(ground_truth_rle), dtype=torch.uint8)

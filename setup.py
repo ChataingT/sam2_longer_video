@@ -37,6 +37,7 @@ EXTRA_PACKAGES = {
         "jupyter>=1.0.0",
         "opencv-python>=4.7.0",
         "eva-decord>=0.6.1",
+        "pytest>=9.0.0",
     ],
     "dev": [
         # "black==24.2.0",
